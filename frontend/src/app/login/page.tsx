@@ -3,8 +3,8 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';   // Hook para aceder ao nosso contexto de autenticação
-import { login as apiLogin } from '@/lib/api'; // Função da API, renomeada para apiLogin para clareza
+import { useAuth } from '@/app/providers';      // Importação já está correta
+import { login as apiLogin } from '@/lib/api'; // Função da API
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -13,8 +13,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // Apanha a função 'login' do nosso contexto de autenticação
-  const { login } = useAuth();
+  // CORREÇÃO 1: Usa o nome correto da função do contexto
+  const { loginUser } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,25 +22,22 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // 1. Chama a função da API para obter o token e os dados do utilizador
       const data = await apiLogin({ email, password });
 
-      // 2. CORREÇÃO CRÍTICA: Usa a função 'login' do AuthContext.
-      // Isto irá atualizar o estado global da aplicação E o localStorage.
-      login(data.user, data.token);
+      // CORREÇÃO 2: Chama a função com o nome correto e na ordem certa (token, user)
+      loginUser(data.token, data.user);
 
-      // 3. Redireciona para o dashboard
       router.push('/dashboard');
 
     } catch (err: unknown) {
       console.error('Erro no login:', err);
-      // Mantém a sua excelente lógica de tratamento de erros
       setError(err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ... (o resto do seu return JSX permanece o mesmo)
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
       <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-full max-w-md">

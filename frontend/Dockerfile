@@ -18,7 +18,7 @@ RUN \
 COPY . .
 
 # Configura a variável de ambiente para a URL do backend
-ENV NEXT_PUBLIC_BACKEND_URL=http://backend:3001
+ENV NEXT_PUBLIC_BACKEND_URL=http://host.docker.internal:3001
 
 # Constrói a aplicação Next.js
 RUN npm run build

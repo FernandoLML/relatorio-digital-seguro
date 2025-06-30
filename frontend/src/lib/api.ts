@@ -77,7 +77,24 @@ interface LoginResponse {
   email: string;
   _id: string;
 }
-export const login = (email: string, password: string): Promise<LoginResponse> => postData<LoginResponse, LoginRequest>('/api/auth/login', { email, password });
+
+export const login = async (credentials: { email: string; password: string }): Promise<any> => {
+  const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    // Envia o objeto de credenciais diretamente
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Falha na autenticação');
+  }
+
+  return response.json();
+};
 
 interface RegisterRequest {
   name: string;

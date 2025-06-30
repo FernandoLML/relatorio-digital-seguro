@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 3001
 
 # Comando para iniciar o servidor
-CMD ["npm", "start"]
+CMD ["node", "src/server.js"]
