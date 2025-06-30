@@ -111,4 +111,139 @@ interface SubmitExpenseResponse {
 }
 
 // ALTERADO: A tipagem da função submitExpense
-export const submitExpense = (formData: FormData): Promise<SubmitExpenseResponse> => uploadFile<SubmitExpenseResponse>('/api/expenses/submit', formData);
+//export const submitExpense = (formData: FormData): Promise<SubmitExpenseResponse> => uploadFile<SubmitExpenseResponse>('/api/expenses/submit', formData);
+
+
+export const submitExpense = async (formData: FormData): Promise<any> => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('Nenhum token de autenticação encontrado.');
+  }
+
+  const response = await fetch(`${BACKEND_URL}/api/expenses/submit`, {
+    method: 'POST',
+    headers: {
+      // Para FormData, não definimos 'Content-Type'. O navegador faz isso automaticamente
+      // com o 'boundary' correto, o que é crucial para o upload de ficheiros.
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Falha ao submeter o relatório.');
+  }
+
+  return response.json();
+};
+
+export const getPendingExpenses = async (): Promise<any[]> => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('Nenhum token de autenticação encontrado.');
+  }
+
+  const response = await fetch(`${BACKEND_URL}/api/expenses/pending`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Falha ao buscar relatórios pendentes.');
+  }
+
+  return response.json();
+};
+
+// Função para buscar um relatório de despesa específico pelo seu ID
+export const getExpenseById = async (id: string): Promise<any> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Nenhum token de autenticação encontrado.');
+    }
+
+    const response = await fetch(`${BACKEND_URL}/api/expenses/${id}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Falha ao buscar o relatório.');
+    }
+
+    return response.json();
+};
+
+// Função para validar (aprovar/rejeitar) um relatório
+export const validateExpense = async (id: string, status: 'aprovado' | 'rejeitado', managerComment: string): Promise<any> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Nenhum token de autenticação encontrado.');
+    }
+
+    const response = await fetch(`${BACKEND_URL}/api/expenses/${id}/validate`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status, managerComment }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Falha ao validar o relatório.');
+    }
+
+    return response.json();
+};
+
+// Função para buscar relatórios aprovados e pendentes de assinatura
+export const getApprovedExpenses = async (): Promise<any[]> => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('Nenhum token de autenticação encontrado.');
+  }
+
+  const response = await fetch(`${BACKEND_URL}/api/expenses/approved`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Falha ao buscar relatórios aprovados.');
+  }
+
+  return response.json();
+};
+
+// Função para enviar a assinatura e a chave pública para o backend
+export const signExpense = async (id: string, signature: string, publicKey: string): Promise<any> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Nenhum token de autenticação encontrado.');
+    }
+
+    const response = await fetch(`${BACKEND_URL}/api/signatures/${id}/sign`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ signature, publicKey }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Falha ao salvar a assinatura.');
+    }
+
+    return response.json();
+};

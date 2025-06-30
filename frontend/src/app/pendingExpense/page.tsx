@@ -1,104 +1,104 @@
-// frontend/src/app/pendingExpenses/page.tsx
-'use client'; // Terá interatividade (aprovar/rejeitar)
+// frontend/src/app/pendingExpense/page.tsx
+'use client';
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link'; // Usar Link para navegação Next.js
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { getPendingExpenses } from '@/lib/api'; // Importa a função da API
 
-interface ExpenseReport {
-  id: string;
+// Define um tipo para o relatório de despesa para melhor organização
+type ExpenseReport = {
+  _id: string;
   description: string;
   amount: number;
-  status: string; // Ex: 'pendente', 'aprovado', 'rejeitado'
-  submittedBy: string; // Nome do colaborador
-  // Adicione outros campos necessários
-}
+  status: string;
+  submittedBy: {
+    name: string;
+  };
+  date: string;
+};
 
 export default function PendingExpensesPage() {
-  const [pendingReports, setPendingReports] = useState<ExpenseReport[]>([]);
+  const [reports, setReports] = useState<ExpenseReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // TODO: Chamar API do backend para listar relatórios pendentes (para Gerente)
-    const fetchPendingReports = async () => {
+    const fetchReports = async () => {
       try {
-        // Ex: const response = await fetch('/api/expenses/pending');
-        // const data = await response.json();
-        // setPendingReports(data);
-        // Dados mock para exemplo:
-        setPendingReports([
-          { id: 'exp001', description: 'Reunião com Cliente X', amount: 150.75, status: 'pendente', submittedBy: 'João Silva' },
-          { id: 'exp002', description: 'Material de Escritório', amount: 89.90, status: 'pendente', submittedBy: 'Maria Souza' },
-        ]);
-      } catch (error) {
-        console.error('Erro ao buscar relatórios pendentes:', error);
+        const data = await getPendingExpenses();
+        setReports(data);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Ocorreu um erro.');
       } finally {
         setLoading(false);
       }
     };
-    fetchPendingReports();
-  }, []);
+
+    fetchReports();
+  }, []); // O array vazio [] garante que o useEffect só é executado uma vez
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando relatórios pendentes...</p>
-      </div>
-    );
+    return <p className="text-center mt-8">A carregar relatórios pendentes...</p>;
+  }
+
+  if (error) {
+    return <p className="text-center text-red-500 mt-8">Erro: {error}</p>;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-6">
-      <h1 className="text-3xl font-bold mb-6 text-center">Relatórios de Despesas Pendentes</h1>
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-        {pendingReports.length === 0 ? (
-          <p className="text-center text-gray-600 dark:text-gray-400">Nenhum relatório pendente para validação.</p>
-        ) : (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Relatórios Pendentes de Validação</h1>
+      
+      {reports.length === 0 ? (
+        <p>Não há relatórios pendentes para validação no momento.</p>
+      ) : (
+        <div className="bg-white shadow-md rounded-lg overflow-hidden">
           <table className="min-w-full leading-normal">
             <thead>
               <tr>
-                <th className="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                  ID
+                <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Colaborador
                 </th>
-                <th className="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Descrição
                 </th>
-                <th className="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Valor
                 </th>
-                <th className="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                  Enviado Por
+                <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Data
                 </th>
-                <th className="px-5 py-3 border-b-2 border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Ações
                 </th>
               </tr>
             </thead>
             <tbody>
-              {pendingReports.map((report) => (
-                <tr key={report.id}>
-                  <td className="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
-                    {report.id}
+              {reports.map((report) => (
+                <tr key={report._id}>
+                  <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                    {report.submittedBy.name}
                   </td>
-                  <td className="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
+                  <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
                     {report.description}
                   </td>
-                  <td className="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
+                  <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
                     R$ {report.amount.toFixed(2)}
                   </td>
-                  <td className="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
-                    {report.submittedBy}
+                   <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                    {new Date(report.date).toLocaleDateString()}
                   </td>
-                  <td className="px-5 py-5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-center">
-                    <Link href={`/validateExpense?id=${report.id}`} className="text-blue-600 hover:text-blue-900">
-                      Visualizar e Validar
+                  <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                    <Link href={`/validateExpense/${report._id}`} className="text-indigo-600 hover:text-indigo-900">
+                      Validar
                     </Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

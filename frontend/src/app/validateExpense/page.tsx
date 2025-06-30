@@ -1,141 +1,141 @@
-// frontend/src/app/validateExpense/page.tsx
+// frontend/src/app/validateExpense/[id]/page.tsx
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react'; // Importe Suspense
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { getExpenseById, validateExpense } from '@/lib/api'; // Importa as funções da API
 
-interface ExpenseReportDetails {
-  id: string;
+type ExpenseReportDetails = {
+  _id: string;
   description: string;
   amount: number;
   status: string;
-  submittedBy: string;
-  receiptUrl: string;
-  // Adicione outros campos
-}
+  submittedBy: {
+    name: string;
+    email: string;
+  };
+  date: string;
+  receiptUrl: string; // URL para ver o recibo
+};
 
-// Componente Wrapper para usar useSearchParams
-function ValidateExpenseContent() { // Renomeado o componente principal
-  const searchParams = useSearchParams();
+export default function ValidateExpensePage() {
+  const params = useParams();
   const router = useRouter();
-  const reportId = searchParams.get('id'); // Pega o ID do relatório da URL
+  const id = params.id as string; // Obtém o ID da URL
+
   const [report, setReport] = useState<ExpenseReportDetails | null>(null);
+  const [managerComment, setManagerComment] = useState('');
+  const [decision, setDecision] = useState<'aprovado' | 'rejeitado' | null>(null);
+
   const [loading, setLoading] = useState(true);
-  const [comment, setComment] = useState(''); // Comentário para rejeição/aprovação
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!reportId) {
-      router.push('/pendingExpenses');
+    if (id) {
+      const fetchReportDetails = async () => {
+        try {
+          const data = await getExpenseById(id);
+          setReport(data);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Falha ao carregar os detalhes do relatório.');
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchReportDetails();
+    }
+  }, [id]);
+
+  const handleDecision = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!decision) {
+      setError('Por favor, selecione uma decisão (Aprovar ou Rejeitar).');
       return;
     }
 
-    const fetchReportDetails = async () => {
-      try {
-        setReport({
-          id: reportId,
-          description: `Relatório de Exemplo para ID: ${reportId}`,
-          amount: 250.00,
-          status: 'pendente',
-          submittedBy: 'Colaborador Teste',
-          receiptUrl: '/placeholder-receipt.png',
-        });
-      } catch (error) {
-        console.error('Erro ao buscar detalhes do relatório:', error);
-        setReport(null); // Garante que setReport é usado no erro
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchReportDetails();
-  }, [reportId, router]);
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
 
-  const handleValidation = async (status: 'aprovado' | 'rejeitado') => {
-    if (!report) return;
-
-    console.log(`Validando relatório ${report.id} como: ${status} com comentário: "${comment}"`);
     try {
-      alert(`Relatório ${report.id} ${status} com sucesso!`);
-      router.push('/pendingExpenses');
-    } catch (error) {
-      console.error(`Erro ao ${status} relatório:`, error);
-      alert(`Falha ao ${status} relatório.`);
+      await validateExpense(id, decision, managerComment);
+      setSuccess(`Relatório ${decision === 'aprovado' ? 'aprovado' : 'rejeitado'} com sucesso!`);
+      setTimeout(() => {
+        router.push('/pendingExpense'); // Volta para a lista de pendentes
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao processar a decisão.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando detalhes do relatório...</p>
-      </div>
-    );
-  }
-
-  if (!report) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-red-500">
-        <p>Relatório não encontrado ou erro ao carregar.</p>
-      </div>
-    );
-  }
+  if (loading) return <p className="text-center mt-8">A carregar detalhes...</p>;
+  if (error && !report) return <p className="text-center text-red-500 mt-8">Erro: {error}</p>;
+  if (!report) return <p className="text-center mt-8">Relatório não encontrado.</p>;
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-6">
-      <h1 className="text-3xl font-bold mb-6 text-center">Validar Relatório de Despesa</h1>
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md max-w-2xl mx-auto">
-        <p className="mb-2"><span className="font-semibold">ID:</span> {report.id}</p>
-        <p className="mb-2"><span className="font-semibold">Descrição:</span> {report.description}</p>
-        <p className="mb-2"><span className="font-semibold">Valor:</span> R$ {report.amount.toFixed(2)}</p>
-        <p className="mb-2"><span className="font-semibold">Status:</span> {report.status}</p>
-        <p className="mb-4"><span className="font-semibold">Enviado Por:</span> {report.submittedBy}</p>
+    <div className="container mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-6">Validar Relatório de Despesa</h1>
 
-        {report.receiptUrl && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Recibo:</h2>
-            <img src={report.receiptUrl} alt="Recibo" className="max-w-full h-auto border rounded-lg shadow-sm" />
-          </div>
-        )}
-
+      <div className="bg-white shadow-lg rounded-lg p-6 max-w-2xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div><strong className="text-gray-600">Colaborador:</strong> {report.submittedBy.name}</div>
+          <div><strong className="text-gray-600">Email:</strong> {report.submittedBy.email}</div>
+          <div><strong className="text-gray-600">Valor:</strong> R$ {report.amount.toFixed(2)}</div>
+          <div><strong className="text-gray-600">Data:</strong> {new Date(report.date).toLocaleDateString()}</div>
+        </div>
+        <div className="mb-4">
+          <strong className="text-gray-600">Descrição:</strong>
+          <p className="p-2 bg-gray-50 rounded mt-1">{report.description}</p>
+        </div>
         <div className="mb-6">
-          <label htmlFor="comment" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
-            Comentário (opcional):
-          </label>
-          <textarea
-            id="comment"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline dark:bg-gray-700 dark:text-white dark:border-gray-600"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            rows={3}
-          ></textarea>
+          <a href={report.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold">
+            Ver Recibo em Ecrã Cheio
+          </a>
         </div>
+        
+        <hr className="my-6"/>
 
-        <div className="flex justify-end gap-4">
-          <button
-            onClick={() => handleValidation('rejeitado')}
-            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-          >
-            Rejeitar
-          </button>
-          <button
-            onClick={() => handleValidation('aprovado')}
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-          >
-            Aprovar
-          </button>
-        </div>
+        <form onSubmit={handleDecision}>
+          <h2 className="text-xl font-semibold mb-4">Tomar Decisão</h2>
+          <div className="mb-4">
+            <label htmlFor="managerComment" className="block text-gray-700 font-bold mb-2">Comentário (Obrigatório se rejeitado)</label>
+            <textarea
+              id="managerComment"
+              value={managerComment}
+              onChange={(e) => setManagerComment(e.target.value)}
+              className="w-full px-3 py-2 border rounded"
+              rows={3}
+              disabled={submitting}
+            />
+          </div>
+
+          {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+          {success && <p className="text-green-500 text-center mb-4">{success}</p>}
+
+          <div className="flex items-center justify-between">
+            <button
+              type="submit"
+              onClick={() => setDecision('rejeitado')}
+              disabled={submitting}
+              className="bg-red-500 text-white font-bold py-2 px-4 rounded hover:bg-red-600 disabled:bg-red-300"
+            >
+              {submitting && decision === 'rejeitado' ? 'A processar...' : 'Rejeitar'}
+            </button>
+            <button
+              type="submit"
+              onClick={() => setDecision('aprovado')}
+              disabled={submitting}
+              className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600 disabled:bg-green-300"
+            >
+              {submitting && decision === 'aprovado' ? 'A processar...' : 'Aprovar'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
-  );
-}
-
-// Exporta a página principal, envolvendo o conteúdo em Suspense
-export default function ValidateExpensePage() { // Renomeada a função de exportação
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando página de validação...</p>
-      </div>
-    }>
-      <ValidateExpenseContent />
-    </Suspense>
   );
 }

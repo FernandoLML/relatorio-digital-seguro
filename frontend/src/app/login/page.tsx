@@ -3,7 +3,8 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';   // Hook para aceder ao nosso contexto de autenticação
+import { login as apiLogin } from '@/lib/api'; // Função da API, renomeada para apiLogin para clareza
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,20 +13,28 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  // Apanha a função 'login' do nosso contexto de autenticação
+  const { login } = useAuth();
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      const data = await login(email, password);
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify({ name: data.name, role: data.role, email: data.email }));
+      // 1. Chama a função da API para obter o token e os dados do utilizador
+      const data = await apiLogin({ email, password });
 
+      // 2. CORREÇÃO CRÍTICA: Usa a função 'login' do AuthContext.
+      // Isto irá atualizar o estado global da aplicação E o localStorage.
+      login(data.user, data.token);
+
+      // 3. Redireciona para o dashboard
       router.push('/dashboard');
-    } catch (err: unknown) { // CHANGED: Use 'unknown' type for caught errors, then narrow it
+
+    } catch (err: unknown) {
       console.error('Erro no login:', err);
-      // Safely check if 'err' is an Error instance and access its message
+      // Mantém a sua excelente lógica de tratamento de erros
       setError(err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.');
     } finally {
       setLoading(false);
