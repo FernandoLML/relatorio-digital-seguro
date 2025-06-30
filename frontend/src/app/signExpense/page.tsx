@@ -3,167 +3,144 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { getExpenseById, signExpense } from '@/lib/api'; // Importa as funções da API
+import { Buffer } from 'buffer'; // Importa o Buffer para conversão segura
 
-// Defina as interfaces completas fora do componente, ou use as que já definiu no topo
-interface ExpenseReportToSign {
-  id: string;
-  description: string;
-  amount: number;
-  status: string; // Deve ser 'aprovado' para assinar
-  submittedBy: string;
-  receiptUrl: string; // URL do recibo para visualização
-  // Adicione outros campos necessários
+// Helper para converter ArrayBuffer para Base64
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  return Buffer.from(buffer).toString('base64');
 }
 
+// Interface para os dados do relatório
+interface ExpenseReportToSign {
+  _id: string;
+  description: string;
+  amount: number;
+  status: string;
+  submittedBy: { name: string; email: string };
+  validatedBy: { name: string; email: string };
+  receiptUrl: string;
+}
 
 function SignExpenseContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reportId = searchParams.get('id');
 
-  // Use a interface específica que você já definiu para 'report'
-  const [report, setReport] = useState<ExpenseReportToSign | null>(null); // ALTERADO: Usando a interface específica
+  const [report, setReport] = useState<ExpenseReportToSign | null>(null);
   const [loading, setLoading] = useState(true);
-  const [signature, setSignature] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!reportId) {
-      router.push('/signedExpenses');
+      router.push('/dashboard'); // Redireciona se não houver ID
       return;
     }
 
     const fetchReport = async () => {
       try {
-        // Simulação de fetch de dados
-        setReport({
-          id: reportId,
-          description: `Relatório Aprovado para Assinatura (ID: ${reportId})`,
-          amount: 300.50,
-          status: 'aprovado',
-          submittedBy: 'Colaborador X',
-          receiptUrl: '/placeholder-receipt.png',
-        });
-      } catch (error) {
-        console.error('Erro ao buscar relatório para assinatura:', error);
-        setReport(null); // Garante que setReport é usado mesmo no erro
+        // Busca os dados reais do relatório usando a API
+        const data = await getExpenseById(reportId);
+        setReport(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erro ao buscar relatório.');
       } finally {
         setLoading(false);
       }
     };
     fetchReport();
-  }, [reportId, router]); // Dependências do useEffect
+  }, [reportId, router]);
 
-  const generateAndSign = async () => {
+  const handleSign = async () => {
     if (!report) {
-      alert('Nenhum relatório para assinar.');
+      setError('Nenhum relatório para assinar.');
       return;
     }
 
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    // Dados que serão assinados para garantir a integridade
     const dataToSign = JSON.stringify({
-      id: report.id,
-      description: report.description,
+      id: report._id,
       amount: report.amount,
-      submittedBy: report.submittedBy,
+      submittedBy: report.submittedBy.email,
+      validatedBy: report.validatedBy.email,
     });
 
     try {
+      // Gera o par de chaves
       const keyPair = await window.crypto.subtle.generateKey(
-        {
-          name: "RSASSA-PKCS1-v1_5",
-          modulusLength: 2048,
-          publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-          hash: "SHA-256",
-        },
+        { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([0x01, 0x00, 0x01]), hash: "SHA-256" },
         true,
         ["sign", "verify"]
       );
 
-      const encoder = new TextEncoder();
-      const encodedData = encoder.encode(dataToSign);
-
+      // Assina os dados com a chave privada
       const signatureBuffer = await window.crypto.subtle.sign(
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        "RSASSA-PKCS1-v1_5",
         keyPair.privateKey,
-        encodedData
+        new TextEncoder().encode(dataToSign)
       );
+      const signatureB64 = arrayBufferToBase64(signatureBuffer);
 
-      const base64Signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
-      setSignature(base64Signature); // setSignature é usado aqui
+      // Exporta a chave pública para ser guardada
+      const publicKeyJwk = await window.crypto.subtle.exportKey('jwk', keyPair.publicKey);
+      const publicKeyString = JSON.stringify(publicKeyJwk);
 
-      // TODO: Enviar a assinatura e a chave pública (ou um identificador da chave) para o backend
-      console.log("Assinatura gerada:", base64Signature);
-      console.log("Chave Pública (para verificação):", await window.crypto.subtle.exportKey('jwk', keyPair.publicKey));
+      // Envia a assinatura e a chave pública para o backend
+      await signExpense(report._id, signatureB64, publicKeyString);
 
-      alert('Relatório assinado com sucesso! (Assinatura gerada no console)');
-      router.push('/signedExpenses');
-    } catch (error) {
-      console.error('Erro ao assinar o relatório:', error);
-      alert('Falha ao assinar o relatório. Verifique o console para detalhes.');
-      setSignature(null); // Usar setSignature aqui para evitar o warning, mesmo em caso de erro
+      setSuccess('Relatório assinado com sucesso!');
+      setTimeout(() => router.push('/signedExpenses'), 2000);
+
+    } catch (err) {
+      console.error('Erro ao assinar o relatório:', err);
+      setError(err instanceof Error ? err.message : 'Falha ao assinar o relatório.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando relatório para assinatura...</p>
-      </div>
-    );
-  }
-
-  if (!report) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-red-500">
-        <p>Relatório não encontrado ou não está aprovado para assinatura.</p>
-      </div>
-    );
-  }
+  if (loading) return <p className="text-center mt-8">A carregar relatório para assinatura...</p>;
+  if (error) return <p className="text-center text-red-500 mt-8">Erro: {error}</p>;
+  if (!report) return <p className="text-center mt-8">Relatório não encontrado.</p>;
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-6">
       <h1 className="text-3xl font-bold mb-6 text-center">Assinar Relatório Digitalmente</h1>
       <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md max-w-2xl mx-auto">
         <h2 className="text-xl font-semibold mb-4">Detalhes do Relatório:</h2>
-        <p className="mb-2"><span className="font-semibold">ID:</span> {report.id}</p>
         <p className="mb-2"><span className="font-semibold">Descrição:</span> {report.description}</p>
         <p className="mb-2"><span className="font-semibold">Valor:</span> R$ {report.amount.toFixed(2)}</p>
-        <p className="mb-4"><span className="font-semibold">Enviado Por:</span> {report.submittedBy}</p>
+        <p className="mb-4"><span className="font-semibold">Enviado Por:</span> {report.submittedBy.name}</p>
 
-        {report.receiptUrl && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Recibo:</h2>
-            <img src={report.receiptUrl} alt="Recibo" className="max-w-full h-auto border rounded-lg shadow-sm" />
-          </div>
-        )}
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+          Clique no botão abaixo para gerar uma assinatura digital para este relatório, garantindo sua autenticidade e integridade.
+        </p>
+
+        {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+        {success && <p className="text-green-500 text-center mb-4">{success}</p>}
 
         <button
-          onClick={generateAndSign}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
+          onClick={handleSign}
+          disabled={submitting || !!success}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full disabled:opacity-50"
         >
-          Gerar e Assinar Digitalmente
+          {submitting ? 'A assinar...' : 'Gerar e Assinar Digitalmente'}
         </button>
-
-        {signature && (
-          <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg break-all text-sm">
-            <p className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Assinatura Gerada (exemplo):</p>
-            <p className="text-gray-800 dark:text-gray-200">{signature}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              (Esta assinatura precisaria ser salva no backend junto com o relatório e a chave pública para verificação posterior)
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
+// O componente principal com Suspense para carregar os parâmetros da URL
 export default function SignExpensePage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando página...</p>
-      </div>
-    }>
+    <Suspense fallback={<p className="text-center mt-8">A carregar página...</p>}>
       <SignExpenseContent />
     </Suspense>
   );

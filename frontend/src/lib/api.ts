@@ -247,3 +247,35 @@ export const signExpense = async (id: string, signature: string, publicKey: stri
 
     return response.json();
 };
+
+export const getSignedExpenses = async (): Promise<any[]> => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('Nenhum token de autenticação encontrado.');
+
+  const response = await fetch(`${BACKEND_URL}/api/expenses/signed`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Falha ao buscar relatórios assinados.');
+  }
+  return response.json();
+};
+
+
+// Função para buscar os dados necessários para verificação da assinatura
+export const getSignatureForVerification = async (id: string): Promise<any> => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('Nenhum token de autenticação encontrado.');
+
+  const response = await fetch(`${BACKEND_URL}/api/signatures/${id}/verify`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Falha ao buscar dados da assinatura.');
+  }
+  return response.json();
+};

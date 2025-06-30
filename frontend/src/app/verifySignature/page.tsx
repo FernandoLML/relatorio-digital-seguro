@@ -1,159 +1,134 @@
 // frontend/src/app/verifySignature/page.tsx
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react'; // Importe Suspense
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { getSignatureForVerification } from '@/lib/api'; // Importa a função da API
+import { Buffer } from 'buffer';
 
-interface SignedReportDetails {
-  id: string;
-  description: string;
-  amount: number;
-  signedBy: string;
-  signature: string; // Assinatura em Base64
-  publicKeyJwk: JsonWebKey; // Chave pública em formato JWK (JSON Web Key)
-  receiptUrl: string;
-  // Adicione outros campos necessários
+// Helper para converter a string Base64 de volta para um ArrayBuffer
+function base64ToArrayBuffer(base64: string) {
+  const binaryString = Buffer.from(base64, 'base64').toString('binary');
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
 }
 
-// Componente Wrapper para usar useSearchParams
-function VerifySignatureContent() { // Renomeado o componente principal
+function VerifySignatureContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reportId = searchParams.get('id');
-  const [report, setReport] = useState<SignedReportDetails | null>(null);
+
+  const [verificationData, setVerificationData] = useState<any | null>(null);
+  const [isVerified, setIsVerified] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!reportId) {
-      router.push('/signedExpenses');
+      router.push('/dashboard');
       return;
     }
-
-    const fetchSignedReport = async () => {
+    const fetchVerificationData = async () => {
       try {
-        setReport({
-          id: reportId,
-          description: `Relatório Assinado (ID: ${reportId})`,
-          amount: 450.00,
-          signedBy: 'Diretor Exemplo',
-          signature: 'MOCK_BASE64_SIGNATURE_HERE',
-          publicKeyJwk: {
-            kty: "RSA",
-            alg: "RSASSA-PKCS1-v1_5",
-            n: "MOCK_N_VALUE_HERE",
-            e: "AQAB",
-            ext: true,
-            key_ops: ["verify"],
-          },
-          receiptUrl: '/placeholder-receipt.png',
-        });
-      } catch (error) {
-        console.error('Erro ao buscar relatório assinado para verificação:', error);
-        setReport(null); // Garante que setReport é usado no erro
-        setVerificationStatus('Erro ao carregar detalhes do relatório.'); // Garante que setVerificationStatus é usado
+        // CORREÇÃO: Busca os dados reais da API
+        const data = await getSignatureForVerification(reportId);
+        setVerificationData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Ocorreu um erro ao carregar os dados.');
       } finally {
         setLoading(false);
       }
     };
-    fetchSignedReport();
+    fetchVerificationData();
   }, [reportId, router]);
 
   const handleVerifySignature = async () => {
-    if (!report || !report.signature || !report.publicKeyJwk) {
-      setVerificationStatus('Dados insuficientes para verificação.');
+    if (!verificationData) {
+      setError('Dados de verificação não encontrados.');
       return;
     }
+    setVerifying(true);
+    setError(null);
 
     try {
+      // CORREÇÃO CRÍTICA: Recria EXATAMENTE o mesmo resumo de dados que foi assinado
+      const dataToVerify = JSON.stringify({
+        id: verificationData.report._id,
+        amount: verificationData.report.amount,
+        submittedBy: verificationData.report.submittedBy.email,
+        validatedBy: verificationData.report.validatedBy.email,
+      });
+      const encodedData = new TextEncoder().encode(dataToVerify);
+
+      // Importa a chave pública (que está em formato JWK string)
       const publicKey = await window.crypto.subtle.importKey(
-        "jwk",
-        report.publicKeyJwk,
-        {
-          name: "RSASSA-PKCS1-v1_5",
-          hash: "SHA-256",
-        },
+        'jwk',
+        JSON.parse(verificationData.publicKey),
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
         true,
         ["verify"]
       );
 
-      const dataToVerify = JSON.stringify({
-        id: report.id,
-        description: report.description,
-        amount: report.amount,
-        signedBy: report.signedBy,
-      });
-      const encoder = new TextEncoder();
-      const encodedData = encoder.encode(dataToVerify);
+      // Converte a assinatura de Base64 para ArrayBuffer
+      const signatureBuffer = base64ToArrayBuffer(verificationData.signature);
 
-      const signatureBuffer = Uint8Array.from(atob(report.signature), c => c.charCodeAt(0));
-
+      // Verifica a assinatura
       const isValid = await window.crypto.subtle.verify(
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        "RSASSA-PKCS1-v1_5",
         publicKey,
         signatureBuffer,
         encodedData
       );
+      
+      setIsVerified(isValid);
 
-      setVerificationStatus(isValid ? 'Assinatura Válida!' : 'Assinatura Inválida!');
-      alert(isValid ? 'Assinatura Digital Válida!' : 'Assinatura Digital Inválida!');
-
-    } catch (error) {
-      console.error('Erro ao verificar assinatura:', error);
-      setVerificationStatus('Erro durante a verificação.'); // Garante que setVerificationStatus é usado
-      alert('Ocorreu um erro ao verificar a assinatura. Verifique o console.');
+    } catch (err) {
+      console.error('Erro ao verificar assinatura:', err);
+      setError('Ocorreu um erro durante a verificação criptográfica.');
+      setIsVerified(false);
+    } finally {
+      setVerifying(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando detalhes do relatório para verificação...</p>
-      </div>
-    );
-  }
-
-  if (!report) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-red-500">
-        <p>Relatório assinado não encontrado ou erro ao carregar.</p>
-      </div>
-    );
-  }
+  if (loading) return <p className="text-center mt-8">A carregar detalhes para verificação...</p>;
+  if (error) return <p className="text-center text-red-500 mt-8">Erro: {error}</p>;
+  if (!verificationData) return <p className="text-center mt-8">Dados de assinatura não encontrados.</p>;
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-6">
       <h1 className="text-3xl font-bold mb-6 text-center">Verificar Assinatura Digital</h1>
       <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md max-w-2xl mx-auto">
         <h2 className="text-xl font-semibold mb-4">Detalhes do Relatório:</h2>
-        <p className="mb-2"><span className="font-semibold">ID:</span> {report.id}</p>
-        <p className="mb-2"><span className="font-semibold">Descrição:</span> {report.description}</p>
-        <p className="mb-2"><span className="font-semibold">Valor:</span> R$ {report.amount.toFixed(2)}</p>
-        <p className="mb-4"><span className="font-semibold">Assinado Por:</span> {report.signedBy}</p>
-        <p className="mb-4"><span className="font-semibold">Assinatura (Base64):</span> <span className="break-all text-sm">{report.signature.substring(0, 50)}...</span></p>
-        <p className="mb-4"><span className="font-semibold">Chave Pública (JWK):</span> <span className="break-all text-sm">{JSON.stringify(report.publicKeyJwk).substring(0, 50)}...</span></p>
-
-        {report.receiptUrl && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Recibo:</h2>
-            <img src={report.receiptUrl} alt="Recibo" className="max-w-full h-auto border rounded-lg shadow-sm" />
-          </div>
-        )}
+        <p><strong>Descrição:</strong> {verificationData.report.description}</p>
+        <p><strong>Valor:</strong> R$ {verificationData.report.amount.toFixed(2)}</p>
+        <p><strong>Assinado Por:</strong> {verificationData.signedBy.name}</p>
+        
+        <hr className="my-6" />
 
         <button
           onClick={handleVerifySignature}
-          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
+          disabled={verifying || isVerified !== null}
+          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full disabled:opacity-50"
         >
-          Verificar Assinatura
+          {verifying ? 'A verificar...' : 'Verificar Assinatura'}
         </button>
 
-        {verificationStatus && (
-          <div className={`mt-6 p-4 rounded-lg text-center ${
-            verificationStatus.includes('Válida') ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-            verificationStatus.includes('Inválida') ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-            'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-          }`}>
-            <p className="font-semibold text-lg">{verificationStatus}</p>
+        {isVerified === true && (
+          <div className="mt-6 p-4 rounded-lg bg-green-100 text-green-800 text-center">
+            <h3 className="font-bold text-lg">ASSINATURA VÁLIDA</h3>
+            <p>A assinatura foi verificada com sucesso. O documento é autêntico.</p>
+          </div>
+        )}
+        {isVerified === false && (
+          <div className="mt-6 p-4 rounded-lg bg-red-100 text-red-800 text-center">
+            <h3 className="font-bold text-lg">ASSINATURA INVÁLIDA</h3>
+            <p>A verificação falhou. A assinatura não corresponde aos dados do documento.</p>
           </div>
         )}
       </div>
@@ -161,13 +136,9 @@ function VerifySignatureContent() { // Renomeado o componente principal
   );
 }
 
-export default function VerifySignaturePage() { // Renomeada a função de exportação
+export default function VerifySignaturePage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-        <p>Carregando página de verificação...</p>
-      </div>
-    }>
+    <Suspense fallback={<p className="text-center mt-8">A carregar...</p>}>
       <VerifySignatureContent />
     </Suspense>
   );
